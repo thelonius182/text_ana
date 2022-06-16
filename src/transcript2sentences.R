@@ -1,34 +1,27 @@
 library(lsa)
 library(readr)
 library(tidyverse)
+library(fs)
 
-acg_01 <- read_delim(
-  "~/Documents/acg_files/acg_01.txt",
-  delim = "^",
-  escape_double = FALSE,
-  col_names = FALSE,
-  locale = locale(),
-  trim_ws = T,
-  show_col_types = F
-)
+source(file = "src/defrag_transcript.R", encoding = "UTF-8")
 
-data(stopwords_en)
-swe_added <- tibble(value = c("ve", "ll", "re", "am"))
-swe <- stopwords_en %>% as_tibble() %>% bind_rows(swe_added)
+processed_transcripts_rds <- "~/Documents/acg_files/transcripts.RDS"
+available_transcripts <- dir_ls("~/Documents/acg_files/", regexp = "\\d\\.\\d - .*\\.txt") %>% as_tibble()
 
-acg_01.1 <- str_flatten(acg_01$X1, collapse = "¶") %>% as_tibble()
+if (file_exists(processed_transcripts_rds)) {
+  
+  processed_transcripts <- read_rds(file = processed_transcripts_rds) %>% as_tibble()
+  new_transcripts <- available_transcripts %>% anti_join(processed_transcripts)
+  
+  defrag_trs(new_transcripts)
+  
+  processed_transcripts <- processed_transcripts %>% bind_rows(new_transcripts)
+  
+} else {
+  
+  defrag_trs(available_transcripts)
+  
+  processed_transcripts <- available_transcripts
+}
 
-acg02 <- str_split(acg_01.1, pattern = "\\.¶", simplify = F) %>% 
-  as_tibble(.name_repair = "unique") %>% 
-  rename(line = `...1`) %>% 
-  mutate(line = str_replace_all(line, "¶", replacement = " "))
-
-acg_03 <- suppressWarnings(separate(data = acg02, col = "line", into = paste0("W", 1:50), sep = "[ ']"))
-
-acg_03.1 <- acg_03 %>% 
-  pivot_longer(cols = starts_with("W"), values_to = "words") %>% 
-  mutate(words = str_replace_all(words, "[,.]", "") %>% str_to_lower()) %>% 
-  filter(!is.na(words) & str_length(words) > 0) %>% 
-  filter(!words %in% swe$value) %>% 
-  select(words) %>% 
-  arrange(words) %>% distinct()
+write_rds(x = processed_transcripts, file = processed_transcripts_rds)
